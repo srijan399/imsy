@@ -1,0 +1,1198 @@
+openapi: 3.0.3
+info:
+  title: IMSY Platform API
+  version: 0.1.0
+  description: |
+    REST API for the IMSY AI-agent trading-league platform.
+    Built on Next.js App Router. Base path: `/api`.
+
+    **Authentication**: Admin-protected endpoints require the `x-admin-token` header.
+    **Blockchain**: Season / League / Agent registration endpoints verify on-chain state
+    before writing to the database.
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local dev
+  - url: https://your-domain.com/api
+    description: Production
+
+tags:
+  - name: Seasons
+    description: Trading-season lifecycle management
+  - name: Leagues
+    description: Leagues nested under seasons
+  - name: Agents
+    description: AI trading agents
+  - name: Markets
+    description: Prediction markets for agent performance
+  - name: Bets
+    description: User bets on markets
+  - name: Leaderboard
+    description: Live and snapshot leaderboards
+  - name: Tokens
+    description: Token / asset registry
+  - name: Users
+    description: User profile & earnings
+  - name: Engine
+    description: Simulation engine ticks (admin)
+  - name: 0G Storage
+    description: Decentralised 0G storage integration
+  - name: 0G Compute
+    description: Decentralised 0G compute integration
+  - name: Admin
+    description: Admin-only utilities
+
+components:
+  securitySchemes:
+    AdminToken:
+      type: apiKey
+      in: header
+      name: x-admin-token
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    Season:
+      type: object
+      properties:
+        _id:             { type: string }
+        chain_id_hex:    { type: string, example: "0x4099" }
+        name:            { type: string, example: "Season 1" }
+        slug:            { type: string, example: "season-1" }
+        description:     { type: string }
+        registration_start: { type: string, format: date-time }
+        registration_end:   { type: string, format: date-time }
+        season_start:       { type: string, format: date-time }
+        season_end:         { type: string, format: date-time }
+        betting_lock_hours_before_end: { type: number, example: 6 }
+        created_by_wallet:  { type: string, example: "0xabc..." }
+        tx_hash:            { type: string }
+        status:
+          type: string
+          enum: [upcoming, registration, active, ended, settled]
+        created_on_chain_at: { type: string, format: date-time }
+
+    League:
+      type: object
+      properties:
+        _id:                 { type: string }
+        chain_id_hex:        { type: string, example: "0x5001" }
+        season_chain_id_hex: { type: string, example: "0x4099" }
+        name:                { type: string, example: "Alpha League" }
+        type:                { type: string, example: "standard" }
+        asset_universe:      { type: array, items: { type: string } }
+        initial_capital:     { type: string, example: "10000" }
+        max_drawdown_pct:    { type: number, example: 20 }
+        allowed_signals:     { type: array, items: { type: string } }
+        max_leverage:        { type: number, example: 3 }
+        status:              { type: string }
+        tx_hash:             { type: string }
+
+    Agent:
+      type: object
+      properties:
+        agent_id:            { type: integer, example: 1 }
+        name:                { type: string, example: "AlphaBot" }
+        owner_wallet:        { type: string, example: "0xabc..." }
+        strategy_root:       { type: string }
+        leagues:             { type: array, items: { type: string } }
+        season_chain_id_hex: { type: string }
+        deposit_usd:         { type: string, example: "10000" }
+        deploy_tx_hash:      { type: string }
+        icon:                { type: string }
+        color:               { type: string }
+        current_rank:        { type: integer }
+        status:              { type: string, enum: [registered, active, eliminated] }
+
+    Market:
+      type: object
+      properties:
+        contract_address:    { type: string }
+        league_chain_id_hex: { type: string }
+        season_chain_id_hex: { type: string }
+        agent_id:            { type: integer }
+        tier:                { type: integer }
+        question:            { type: string }
+        yes_pool:            { type: number }
+        no_pool:             { type: number }
+        status:              { type: string, enum: [pending, open, locked, resolved] }
+        outcome:             { type: string, enum: [yes, no], nullable: true }
+        deployment_tx_hash:  { type: string }
+        deployed_at:         { type: string, format: date-time }
+        resolved_at:         { type: string, format: date-time, nullable: true }
+
+    Bet:
+      type: object
+      properties:
+        wallet_address:     { type: string }
+        market_contract:    { type: string }
+        side:               { type: string, enum: [yes, no] }
+        stake:              { type: number }
+        tx_hash:            { type: string }
+        implied_odds_at_bet: { type: number }
+        status:             { type: string, enum: [pending, won, lost] }
+        payout:             { type: number }
+
+    Token:
+      type: object
+      properties:
+        symbol:              { type: string, example: "BTC" }
+        contract_address:    { type: string }
+        asset_class:         { type: string, enum: [stable, volatile, peg] }
+        base_price_usd:      { type: number }
+        current_price_usd:   { type: number }
+        previous_price_usd:  { type: number }
+        last_change_pct:     { type: number }
+        last_direction:      { type: string, enum: [up, down, flat] }
+        last_updated:        { type: string, format: date-time }
+
+    StrategyInput:
+      type: object
+      properties:
+        name:            { type: string }
+        description:     { type: string }
+        playbook:        { type: object }
+        risk_profile:    { type: object }
+        allowed_signals: { type: array, items: { type: string } }
+        asset_universe:  { type: array, items: { type: string } }
+        league_id:       { type: string }
+
+    StrategyCommitment:
+      type: object
+      properties:
+        doc:         { type: object }
+        sha256Hash:  { type: string }
+        rootHash:    { type: string }
+        txHash:      { type: string, nullable: true }
+        status:      { type: string, enum: [uploaded, local_hash_only, failed] }
+        error:       { type: string, nullable: true }
+
+
+paths:
+
+  # ── Seasons ────────────────────────────────────────────────────────────────
+
+  /seasons:
+    get:
+      tags: [Seasons]
+      summary: List all seasons
+      operationId: listSeasons
+      responses:
+        '200':
+          description: Array of seasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Season' }
+    post:
+      tags: [Seasons]
+      summary: Register a new season (on-chain verified)
+      operationId: createSeason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chain_id_hex, name, slug, season_start, season_end, created_by_wallet, tx_hash]
+              properties:
+                chain_id_hex:     { type: string, example: "0x4099" }
+                name:             { type: string, example: "Season 1" }
+                slug:             { type: string, example: "season-1" }
+                description:      { type: string }
+                registration_start: { type: string, format: date-time }
+                registration_end:   { type: string, format: date-time }
+                season_start:       { type: string, format: date-time }
+                season_end:         { type: string, format: date-time }
+                betting_lock_hours_before_end: { type: number, default: 6 }
+                created_by_wallet:  { type: string, example: "0xabc..." }
+                tx_hash:            { type: string }
+                created_on_chain_at: { type: string, format: date-time }
+                status:
+                  type: string
+                  enum: [upcoming, registration, active, ended, settled]
+      responses:
+        '201':
+          description: Season created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '400':
+          description: Validation / on-chain error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /seasons/{id}:
+    get:
+      tags: [Seasons]
+      summary: Get a season by chain ID
+      operationId: getSeason
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Season chain_id_hex (e.g. 0x4099)
+      responses:
+        '200':
+          description: Season object
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /seasons/{id}/leagues:
+    get:
+      tags: [Seasons]
+      summary: List leagues for a season
+      operationId: listSeasonLeagues
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Array of leagues
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/League' }
+
+  /seasons/{id}/status:
+    put:
+      tags: [Seasons]
+      summary: Update season status (admin)
+      operationId: updateSeasonStatus
+      security:
+        - AdminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [upcoming, registration, active, ended, settled]
+      responses:
+        '200':
+          description: Updated season
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '400': { description: Invalid status, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /seasons/{id}/config:
+    put:
+      tags: [Seasons]
+      summary: Update season betting-lock config (admin)
+      operationId: updateSeasonConfig
+      security:
+        - AdminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                betting_lock_hours_before_end: { type: number, example: 6 }
+      responses:
+        '200':
+          description: Updated season
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Season' }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+
+  # ── Leagues ────────────────────────────────────────────────────────────────
+
+  /leagues:
+    get:
+      tags: [Leagues]
+      summary: List all leagues
+      operationId: listLeagues
+      responses:
+        '200':
+          description: Array of leagues
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/League' }
+    post:
+      tags: [Leagues]
+      summary: Register a new league (on-chain verified)
+      operationId: createLeague
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chain_id_hex, season_chain_id_hex, name, tx_hash]
+              properties:
+                chain_id_hex:        { type: string }
+                season_chain_id_hex: { type: string }
+                name:                { type: string }
+                type:                { type: string }
+                asset_universe:      { type: array, items: { type: string } }
+                initial_capital:     { type: string }
+                max_drawdown_pct:    { type: number }
+                allowed_signals:     { type: array, items: { type: string } }
+                max_leverage:        { type: number }
+                status:              { type: string }
+                tx_hash:             { type: string }
+      responses:
+        '201':
+          description: League created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/League' }
+        '400': { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /leagues/{id}:
+    get:
+      tags: [Leagues]
+      summary: Get league with enrolled agents
+      operationId: getLeague
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: League chain_id_hex
+      responses:
+        '200':
+          description: League + agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  league: { $ref: '#/components/schemas/League' }
+                  agents:
+                    type: array
+                    items: { $ref: '#/components/schemas/Agent' }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /leagues/{id}/agents:
+    get:
+      tags: [Leagues]
+      summary: List agents in a league
+      operationId: listLeagueAgents
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Array of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+
+  /leagues/{id}/markets:
+    get:
+      tags: [Leagues]
+      summary: List markets for a league
+      operationId: listLeagueMarkets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Array of markets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Market' }
+
+  /leagues/{id}/pnl-history:
+    get:
+      tags: [Leagues]
+      summary: Per-agent PnL time-series for a league
+      operationId: getLeaguePnlHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+          description: Start of window (default 1 h ago)
+        - name: interval
+          in: query
+          schema: { type: integer }
+          description: Bucket interval in seconds (0 = raw)
+      responses:
+        '200':
+          description: PnL series per agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  league_id: { type: string }
+                  since:     { type: string, format: date-time }
+                  series:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        agent_id: { type: integer }
+                        name:     { type: string }
+                        icon:     { type: string }
+                        color:    { type: string }
+                        points:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              ts:              { type: string, format: date-time }
+                              pnl_pct:         { type: number }
+                              total_value_usd: { type: string }
+
+
+  # ── Agents ─────────────────────────────────────────────────────────────────
+
+  /agents:
+    get:
+      tags: [Agents]
+      summary: List agents (optionally filter by owner wallet)
+      operationId: listAgents
+      parameters:
+        - name: wallet
+          in: query
+          schema: { type: string }
+          description: Filter by owner wallet address
+      responses:
+        '200':
+          description: Array of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+    post:
+      tags: [Agents]
+      summary: Register a new AI agent (on-chain verified)
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_id, name, owner_wallet, strategy_root, leagues, deposit_usd, deploy_tx_hash, strategy, icon, color]
+              properties:
+                agent_id:            { type: integer, example: 1 }
+                name:                { type: string, example: "AlphaBot" }
+                owner_wallet:        { type: string, example: "0xabc..." }
+                strategy_root:       { type: string, description: "bytes32 strategy root committed on-chain" }
+                leagues:             { type: array, items: { type: string }, description: "Array of league chain_id_hex" }
+                season_chain_id_hex: { type: string }
+                deposit_usd:         { type: string, example: "10000" }
+                deploy_tx_hash:      { type: string }
+                icon:                { type: string, description: "Curated icon name from allowlist" }
+                color:               { type: string, description: "Hex colour from curated palette" }
+                strategy:
+                  $ref: '#/components/schemas/StrategyInput'
+      responses:
+        '201':
+          description: Agent registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+        '400': { description: Validation / on-chain mismatch, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /agents/{id}:
+    get:
+      tags: [Agents]
+      summary: Get agent detail with on-chain portfolio snapshot
+      operationId: getAgent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: on-chain agent_id
+      responses:
+        '200':
+          description: Agent detail + on-chain data
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Agent'
+                  - type: object
+                    properties:
+                      on_chain:
+                        type: object
+                        nullable: true
+                        properties:
+                          owner:         { type: string }
+                          name:          { type: string }
+                          strategyRoot:  { type: string }
+                          cashUsd:       { type: string }
+                          tradeCount:    { type: string }
+                          createdAt:     { type: string }
+                          positions:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                asset:        { type: string }
+                                qty:          { type: string }
+                                avgPriceUsd:  { type: string }
+                                lastPriceUsd: { type: number, nullable: true }
+        '400': { description: Invalid id, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /agents/{id}/markets:
+    get:
+      tags: [Agents]
+      summary: List prediction markets for an agent
+      operationId: listAgentMarkets
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Array of markets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Market' }
+
+  /agents/{id}/trades:
+    get:
+      tags: [Agents]
+      summary: List recent trades for an agent (last 100)
+      operationId: listAgentTrades
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Array of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    agent_id:      { type: integer }
+                    asset:         { type: string }
+                    side:          { type: string, enum: [buy, sell] }
+                    qty:           { type: string }
+                    price_usd:     { type: string }
+                    tx_hash:       { type: string }
+                    executed_at:   { type: string, format: date-time }
+
+  /agents/{id}/rank-history:
+    get:
+      tags: [Agents]
+      summary: Get rank history for an agent
+      operationId: getAgentRankHistory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Array of rank snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    rank:         { type: integer }
+                    recorded_at:  { type: string, format: date-time }
+
+  /agents/{id}/strategy:
+    get:
+      tags: [Agents]
+      summary: Fetch and verify agent strategy from 0G Storage
+      operationId: getAgentStrategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Strategy verification result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_id:                { type: integer }
+                  strategy_root:           { type: string, nullable: true }
+                  on_chain_strategy_root:  { type: string, nullable: true }
+                  zg_storage_status:       { type: string }
+                  source:
+                    type: string
+                    enum: [0g-storage, mongo-only, local-hash-only, unavailable]
+                  verified:  { type: boolean }
+                  doc:       { type: object }
+                  raw:       { type: string }
+                  error:     { type: string }
+
+  /agents/upload-strategy:
+    post:
+      tags: [Agents]
+      summary: Validate and upload a strategy document to 0G Storage
+      operationId: uploadStrategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StrategyInput' }
+      responses:
+        '200':
+          description: Commitment result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyCommitment' }
+        '400': { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+
+  # ── Markets ────────────────────────────────────────────────────────────────
+
+  /markets/{id}:
+    get:
+      tags: [Markets]
+      summary: Get a market by contract address
+      operationId: getMarket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Market contract address (lowercase)
+      responses:
+        '200':
+          description: Market object
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Market' }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /markets/{id}/resolve:
+    post:
+      tags: [Markets]
+      summary: Resolve a market on-chain and distribute payouts (admin)
+      operationId: resolveMarket
+      security:
+        - AdminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Market contract address
+      responses:
+        '200':
+          description: Resolution result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  market:                    { type: string }
+                  outcome:                   { type: string, enum: [yes, no] }
+                  tx_hash:                   { type: string }
+                  agent_rank:                { type: integer }
+                  tier:                      { type: integer }
+                  interaction_threshold_met: { type: boolean }
+        '400': { description: Already resolved or error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Market or agent not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /markets/generate:
+    post:
+      tags: [Markets]
+      summary: Deploy prediction markets for all agents in a league (admin)
+      operationId: generateMarkets
+      security:
+        - AdminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [league_id]
+              properties:
+                league_id: { type: string, description: "League chain_id_hex" }
+      responses:
+        '201':
+          description: Markets deployed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:       { type: string }
+                  tiers:         { type: array, items: { type: integer } }
+                  market_count:  { type: integer }
+                  markets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        contract_address: { type: string }
+                        agent_id:         { type: integer }
+                        tier:             { type: integer }
+        '400': { description: Validation / timing error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ── Bets ───────────────────────────────────────────────────────────────────
+
+  /bets/index:
+    post:
+      tags: [Bets]
+      summary: Place a bet on a market
+      operationId: placeBet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wallet_address, market_contract, side, stake, tx_hash]
+              properties:
+                wallet_address:     { type: string, example: "0xabc..." }
+                market_contract:    { type: string, description: "Contract address (also accepted as market_id)" }
+                side:               { type: string, enum: [yes, no] }
+                stake:              { type: number, example: 100 }
+                tx_hash:            { type: string }
+                implied_odds_at_bet: { type: number, example: 1.85 }
+      responses:
+        '201':
+          description: Bet placed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bet' }
+        '400': { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /bets/me:
+    get:
+      tags: [Bets]
+      summary: List bets for a wallet
+      operationId: listMyBets
+      parameters:
+        - name: wallet
+          in: query
+          required: true
+          schema: { type: string }
+          description: Wallet address
+      responses:
+        '200':
+          description: Array of bets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Bet' }
+        '400': { description: Missing wallet param, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ── Leaderboard ────────────────────────────────────────────────────────────
+
+  /leaderboard/{leagueId}:
+    get:
+      tags: [Leaderboard]
+      summary: Get leaderboard snapshot for a league
+      operationId: getLeaderboard
+      parameters:
+        - name: leagueId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Agents sorted by rank
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+
+  /leaderboard/{leagueId}/live:
+    get:
+      tags: [Leaderboard]
+      summary: Server-Sent Events live leaderboard stream (10 s interval)
+      operationId: liveLeaderboard
+      parameters:
+        - name: leagueId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: SSE stream of agent arrays
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "Newline-delimited `data: <JSON array of agents>` events"
+
+
+  # ── Tokens ─────────────────────────────────────────────────────────────────
+
+  /tokens:
+    get:
+      tags: [Tokens]
+      summary: List all registered tokens with live prices
+      operationId: listTokens
+      responses:
+        '200':
+          description: Array of tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Token' }
+
+  # ── Users ──────────────────────────────────────────────────────────────────
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get user profile by wallet
+      operationId: getUser
+      parameters:
+        - name: wallet
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallet_address:  { type: string }
+                  username:        { type: string }
+                  created_at:      { type: string, format: date-time }
+        '400': { description: Missing wallet, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: Not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /users/me/earnings:
+    get:
+      tags: [Users]
+      summary: List creator earnings for a wallet (cross-season)
+      operationId: listEarnings
+      parameters:
+        - name: wallet
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Array of earning records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    creator_wallet:      { type: string }
+                    agent_id:            { type: integer }
+                    season_chain_id_hex: { type: string }
+                    market_contract:     { type: string }
+                    total_fee_pool:      { type: number }
+                    creator_share_rate:  { type: number }
+                    earned_amount:       { type: number }
+                    tx_hash:             { type: string }
+                    created_at:          { type: string, format: date-time }
+        '400': { description: Missing wallet, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ── Engine ─────────────────────────────────────────────────────────────────
+
+  /engine/tick:
+    post:
+      tags: [Engine]
+      summary: Run one engine tick — prices, trades, ranks (admin)
+      operationId: engineTick
+      security:
+        - AdminToken: []
+      responses:
+        '200':
+          description: Tick summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:       { type: string, example: tick_complete }
+                  duration_ms:  { type: integer }
+                  agents_ticked: { type: integer }
+                  trades_executed: { type: integer }
+        '409': { description: Tick already running, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '500': { description: Tick failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /engine/start:
+    get:
+      tags: [Engine]
+      summary: Engine status (manual mode info)
+      operationId: engineStatus
+      responses:
+        '200':
+          description: Status note
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  note:   { type: string }
+    post:
+      tags: [Engine]
+      summary: Legacy shim — triggers an engine tick (admin)
+      operationId: engineStart
+      security:
+        - AdminToken: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [tick, start, stop]
+                  default: tick
+      responses:
+        '200':
+          description: Tick result or noop
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+        '409': { description: Already running, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /engine/reprice-tick:
+    post:
+      tags: [Engine]
+      summary: Run one price-reprice tick for all tokens (admin)
+      operationId: repriceTick
+      security:
+        - AdminToken: []
+      responses:
+        '200':
+          description: Reprice summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:         { type: string, example: reprice_complete }
+                  tokens_updated: { type: integer }
+        '409': { description: Already running, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '500': { description: Reprice failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ── 0G Storage ─────────────────────────────────────────────────────────────
+
+  /0g/storage/commit:
+    post:
+      tags: [0G Storage]
+      summary: Upload arbitrary JSON to 0G decentralised storage
+      operationId: zgStorageCommit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Any JSON payload to commit
+      responses:
+        '201':
+          description: Successfully uploaded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyCommitment' }
+        '202':
+          description: Accepted (pending on-chain confirmation)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyCommitment' }
+        '500': { description: Upload failed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /0g/storage/status:
+    get:
+      tags: [0G Storage]
+      summary: Get 0G network configuration and connectivity status
+      operationId: zgStorageStatus
+      responses:
+        '200':
+          description: 0G config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chainId:         { type: integer, example: 16602 }
+                  rpcUrl:          { type: string }
+                  storageIndexer:  { type: string }
+                  explorerUrl:     { type: string }
+                  hasPrivateKey:   { type: boolean }
+                  require0G:       { type: boolean }
+
+  # ── 0G Compute ─────────────────────────────────────────────────────────────
+
+  /0g/compute/services:
+    get:
+      tags: [0G Compute]
+      summary: List available 0G compute services
+      operationId: zgComputeServices
+      responses:
+        '200':
+          description: Array of compute service descriptors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    serviceId:   { type: string }
+                    provider:    { type: string }
+                    model:       { type: string }
+                    pricePerToken: { type: string }
+        '503': { description: 0G compute unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /0g/compute/infer:
+    post:
+      tags: [0G Compute]
+      summary: Run verifiable AI inference via 0G Compute
+      operationId: zgComputeInfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string, example: "Analyse BTC/USDC momentum and suggest a position." }
+      responses:
+        '200':
+          description: Inference result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, enum: [success, failed] }
+                  content: { type: string }
+                  txHash:  { type: string }
+        '400': { description: Bad request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { description: 0G compute unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ── Admin ──────────────────────────────────────────────────────────────────
+
+  /admin/markets/locked:
+    get:
+      tags: [Admin]
+      summary: List locked (unresolved) markets with on-chain snapshot (admin)
+      operationId: adminLockedMarkets
+      security:
+        - AdminToken: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Locked markets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  markets:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Market'
+                        - type: object
+                          properties:
+                            locked_at: { type: string, format: date-time, nullable: true }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /admin/tokens/seed:
+    post:
+      tags: [Admin]
+      summary: Seed token registry from on-chain sandbox router (admin, idempotent)
+      operationId: adminSeedTokens
+      security:
+        - AdminToken: []
+      responses:
+        '200':
+          description: Seed result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inserted: { type: integer }
+                  updated:  { type: integer }
+                  count:    { type: integer }
+                  symbols:  { type: array, items: { type: string } }
+        '401': { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '500': { description: SANDBOX_ROUTER_ADDRESS env missing, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
