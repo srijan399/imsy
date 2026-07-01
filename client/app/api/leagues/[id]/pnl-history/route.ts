@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { connectMongo } from "@/lib/db/mongoose"
 import { AgentModel } from "@/lib/db/models/Agent"
 import { listSnapshotsByLeague } from "@/lib/db/repositories/values"
+import { getDemoPnlHistory } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 const DEFAULT_WINDOW_MS = 60 * 60 * 1000 // 1h
 
@@ -25,6 +27,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     AgentModel.find({ leagues: leagueId }).lean().exec(),
     listSnapshotsByLeague(leagueId, since),
   ])
+
+  if ((agents.length === 0 || snapshots.length === 0) && isDemoDataEnabled()) {
+    return NextResponse.json({ league_id: leagueId, ...getDemoPnlHistory(leagueId) })
+  }
 
   const grouped = new Map<number, Array<{ ts: number; pnl_pct: number; total_value_usd: string }>>()
   for (const snap of snapshots) {

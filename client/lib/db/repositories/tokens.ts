@@ -2,6 +2,8 @@ import "server-only"
 
 import { connectMongo } from "@/lib/db/mongoose"
 import { TokenRegistryModel, type TokenRegistryDoc } from "@/lib/db/models/TokenRegistry"
+import { DEMO_TOKENS } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export type AssetClass = "stable" | "volatile" | "peg"
 
@@ -50,7 +52,10 @@ export async function seedTokens(seeds: TokenSeed[]): Promise<{ inserted: number
 
 export async function listTokens(): Promise<TokenRegistryDoc[]> {
   await connectMongo()
-  return TokenRegistryModel.find().sort({ symbol: 1 }).lean().exec() as Promise<TokenRegistryDoc[]>
+  const tokens = await TokenRegistryModel.find().sort({ symbol: 1 }).lean().exec()
+  if (!isDemoDataEnabled()) return tokens as TokenRegistryDoc[]
+  const seen = new Set(tokens.map((token) => token.symbol))
+  return [...tokens, ...DEMO_TOKENS.filter((token) => !seen.has(token.symbol))] as TokenRegistryDoc[]
 }
 
 export async function listSymbols(): Promise<string[]> {
@@ -60,7 +65,8 @@ export async function listSymbols(): Promise<string[]> {
 
 export async function getTokenBySymbol(symbol: string) {
   await connectMongo()
-  return TokenRegistryModel.findOne({ symbol: symbol.toUpperCase() }).lean().exec() as Promise<TokenRegistryDoc | null>
+  const token = await TokenRegistryModel.findOne({ symbol: symbol.toUpperCase() }).lean().exec()
+  return (token ?? (isDemoDataEnabled() ? DEMO_TOKENS.find((demo) => demo.symbol === symbol.toUpperCase()) : null) ?? null) as TokenRegistryDoc | null
 }
 
 export async function updateTokenPrice(symbol: string, newPriceUsd: number, lastDirection: 1 | -1) {

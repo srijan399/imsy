@@ -6,6 +6,8 @@ import { ConnectButton } from "@rainbow-me/rainbowkit"
 import { useAccount } from "wagmi"
 import { SectionLabel } from "@/components/marketing-section-label"
 import { MarketingHeader } from "@/components/marketing-header"
+import { DEMO_BETS } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 interface BetRow {
   tx_hash: string
@@ -20,10 +22,11 @@ export default function MyBetsPage() {
   const { address } = useAccount()
   const [bets, setBets] = useState<BetRow[]>([])
   const [loading, setLoading] = useState(false)
+  const demoMode = isDemoDataEnabled()
 
   useEffect(() => {
     if (!address) {
-      setBets([])
+      setBets(demoMode ? DEMO_BETS as BetRow[] : [])
       return
     }
     setLoading(true)
@@ -32,7 +35,7 @@ export default function MyBetsPage() {
       .then((data) => setBets(Array.isArray(data) ? data : []))
       .catch(() => setBets([]))
       .finally(() => setLoading(false))
-  }, [address])
+  }, [address, demoMode])
 
   return (
     <main className="relative min-h-screen">
@@ -41,12 +44,16 @@ export default function MyBetsPage() {
       <div className="relative z-10 pt-28 pb-24 pl-6 md:pl-28 pr-6 md:pr-12 w-full">
         <SectionLabel>My bets</SectionLabel>
         <h1 className="mt-4 mb-12 font-[var(--font-bebas)] text-5xl md:text-7xl tracking-tight leading-none">Bets</h1>
-        {!address ? (
-          <div className="border border-border/40 p-12 text-center space-y-4">
-            <p className="font-mono text-xs text-muted-foreground">Connect your wallet to load your bets.</p>
+        {!address && (
+          <div className="mb-6 border border-accent/30 bg-accent/5 p-4 flex flex-wrap items-center justify-between gap-4">
+            <p className="font-mono text-xs text-muted-foreground">
+              {demoMode ? "Showing demo bets. Connect your wallet to load your real positions." : "Connect your wallet to load your real positions."}
+            </p>
             <ConnectButton />
           </div>
-        ) : loading ? (
+        )}
+
+        {loading ? (
           <div className="flex items-center gap-3 p-16 font-mono text-xs text-muted-foreground">
             <span className="inline-block size-4 border border-accent/60 border-t-transparent rounded-full animate-spin" />
             Loading bets…

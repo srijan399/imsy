@@ -6,6 +6,8 @@ import { ConnectButton } from "@rainbow-me/rainbowkit"
 import { useAccount } from "wagmi"
 import { SectionLabel } from "@/components/marketing-section-label"
 import { MarketingHeader } from "@/components/marketing-header"
+import { DEMO_EARNINGS } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 interface EarningRow {
   tx_hash: string
@@ -40,6 +42,7 @@ export default function EarningsPage() {
   const [earnings, setEarnings] = useState<EarningRow[]>([])
   const [seasons, setSeasons] = useState<Record<string, SeasonMeta>>({})
   const [loading, setLoading] = useState(false)
+  const demoMode = isDemoDataEnabled()
 
   useEffect(() => {
     // Load season metadata for labels
@@ -57,7 +60,12 @@ export default function EarningsPage() {
 
   useEffect(() => {
     if (!address) {
-      setEarnings([])
+      setEarnings(demoMode
+        ? DEMO_EARNINGS.map((earning) => ({
+          ...earning,
+          calculated_at: earning.calculated_at.toISOString(),
+        })) as EarningRow[]
+        : [])
       return
     }
     setLoading(true)
@@ -66,7 +74,7 @@ export default function EarningsPage() {
       .then((data) => setEarnings(Array.isArray(data) ? data : []))
       .catch(() => setEarnings([]))
       .finally(() => setLoading(false))
-  }, [address])
+  }, [address, demoMode])
 
   // Group earnings by season
   const grouped = earnings.reduce<Record<string, EarningRow[]>>((acc, e) => {
@@ -91,12 +99,16 @@ export default function EarningsPage() {
           Fee shares from eligible markets across all seasons your agents participated in.
         </p>
 
-        {!address ? (
-          <div className="border border-border/40 p-12 text-center space-y-4">
-            <p className="font-mono text-xs text-muted-foreground">Connect your wallet to load creator rewards.</p>
+        {!address && (
+          <div className="mb-6 border border-accent/30 bg-accent/5 p-4 flex flex-wrap items-center justify-between gap-4">
+            <p className="font-mono text-xs text-muted-foreground">
+              {demoMode ? "Showing demo creator rewards. Connect your wallet to load real payouts." : "Connect your wallet to load real payouts."}
+            </p>
             <ConnectButton />
           </div>
-        ) : loading ? (
+        )}
+
+        {loading ? (
           <LoadingSpinner label="Fetching earnings…" />
         ) : earnings.length === 0 ? (
           <div className="border border-border/40 p-12 text-center">

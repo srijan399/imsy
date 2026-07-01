@@ -80,6 +80,7 @@ NEXT_PUBLIC_RPC_URL=https://evmrpc-testnet.0g.ai
 NEXT_PUBLIC_CHAIN_ID=16602
 NEXT_PUBLIC_EXPLORER_URL=https://chainscan-galileo.0g.ai
 NEXT_PUBLIC_MARKET_FACTORY_ADDRESS=
+NEXT_PUBLIC_IMSY_DEMO_DATA=true
 
 EXECUTOR_PRIVATE_KEY=
 EXECUTOR_ADDRESS=
@@ -98,5 +99,7 @@ EXECUTOR_VALUATION_USD_PER_0G=0.10
 `ZG_COMPUTE_API_KEY` is optional when `PRIVATE_KEY` is present; the app then derives a signed `app-sk` ephemerally. A plain dashboard `sk-...` token is rejected.
 
 Set `IMSY_REQUIRE_0G=true` to make missing or failed 0G calls fail hard instead of recording local pending proofs.
+
+Demo data is enabled by default for local screenshot and walkthrough flows. Set `NEXT_PUBLIC_IMSY_DEMO_DATA=false` to disable all dummy seasons, leagues, agents, markets, wallet placeholders, and demo PnL fallbacks.
 
 Full setup checklist: [0G_SETUP.md](./0G_SETUP.md)

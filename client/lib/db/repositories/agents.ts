@@ -6,36 +6,50 @@ import { LeagueModel } from "@/lib/db/models/League"
 import { UserModel } from "@/lib/db/models/User"
 import { TradeLogModel } from "@/lib/db/models/TradeLog"
 import { MarketModel } from "@/lib/db/models/Market"
+import { DEMO_AGENTS, DEMO_MARKETS, DEMO_TRADES, getDemoAgent } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export async function listAgents() {
   await connectMongo()
-  return AgentModel.find().sort({ current_rank: 1 }).lean().exec()
+  const agents = await AgentModel.find().sort({ current_rank: 1 }).lean().exec()
+  return mergeDemoAgents(agents)
 }
 
 export async function listAgentsByOwner(wallet: string) {
   await connectMongo()
-  return AgentModel.find({ owner_wallet: wallet.toLowerCase() }).sort({ current_rank: 1 }).lean().exec()
+  const agents = await AgentModel.find({ owner_wallet: wallet.toLowerCase() }).sort({ current_rank: 1 }).lean().exec()
+  return mergeDemoAgents(agents)
 }
 
 export async function listAgentsByLeague(leagueChainIdHex: string) {
   await connectMongo()
-  return AgentModel.find({ leagues: leagueChainIdHex.toLowerCase() }).sort({ current_rank: 1 }).lean().exec()
+  const agents = await AgentModel.find({ leagues: leagueChainIdHex.toLowerCase() }).sort({ current_rank: 1 }).lean().exec()
+  return mergeDemoAgents(
+    agents,
+    DEMO_AGENTS.filter((agent) => agent.leagues.some((league) => league.toLowerCase() === leagueChainIdHex.toLowerCase())),
+  )
 }
 
 export async function getAgentByOnChainId(agentId: number) {
   await connectMongo()
-  return AgentModel.findOne({ agent_id: agentId }).lean().exec()
+  const agent = await AgentModel.findOne({ agent_id: agentId }).lean().exec()
+  return agent ?? (isDemoDataEnabled() ? getDemoAgent(agentId) : null) as typeof agent
 }
 
 export async function getAgentDetail(agentId: number) {
   await connectMongo()
   const agent = await AgentModel.findOne({ agent_id: agentId }).lean().exec()
-  if (!agent) return null
+  const demoAgent = isDemoDataEnabled() ? getDemoAgent(agentId) : null
+  if (!agent && !demoAgent) return null
   const [trades, markets] = await Promise.all([
     TradeLogModel.find({ agent_id: agentId }).sort({ timestamp: -1 }).limit(50).lean().exec(),
     MarketModel.find({ agent_id: agentId }).sort({ tier: 1 }).lean().exec(),
   ])
-  return { agent, trades, markets }
+  return {
+    agent: agent ?? demoAgent,
+    trades: trades.length || !isDemoDataEnabled() ? trades : DEMO_TRADES.get(agentId) ?? [],
+    markets: markets.length || !isDemoDataEnabled() ? markets : DEMO_MARKETS.filter((market) => market.agent_id === agentId),
+  }
 }
 
 export async function ensureUser(wallet: string, role: "bettor" | "builder" | "admin" = "builder") {
@@ -107,4 +121,10 @@ export async function pushRankHistory(agentId: number, rank: number, roiPct: num
     { $push: { rank_history: { timestamp: new Date(), rank, roi_pct: roiPct } } },
     { returnDocument: "after" },
   ).lean().exec()
+}
+
+function mergeDemoAgents<T extends Array<{ agent_id: number }>>(agents: T, demos = DEMO_AGENTS) {
+  if (!isDemoDataEnabled()) return agents
+  const seen = new Set(agents.map((agent) => agent.agent_id))
+  return [...agents, ...demos.filter((agent) => !seen.has(agent.agent_id))] as unknown as T
 }

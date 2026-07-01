@@ -6,21 +6,25 @@ import { AgentModel } from "@/lib/db/models/Agent"
 import { getLeague } from "@/lib/db/repositories/leagues"
 import { getSeasonByChainId } from "@/lib/db/repositories/seasons"
 import { readMarketContractSnapshot } from "@/lib/web3/server"
+import { DEMO_MARKETS, getDemoAgent, getDemoMarket, getDemoMarketsByAgent, getDemoMarketsByLeague } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export async function listMarketsByLeague(leagueChainIdHex: string) {
   await connectMongo()
   // Ensure season/league statuses are up-to-date for this league.
   const league = await getLeague(leagueChainIdHex)
   if (league) await getSeasonByChainId(league.season_chain_id_hex)
-  return MarketModel.find({ league_chain_id_hex: leagueChainIdHex.toLowerCase() })
+  const markets = await MarketModel.find({ league_chain_id_hex: leagueChainIdHex.toLowerCase() })
     .sort({ tier: 1, total_volume: -1 })
     .lean()
     .exec()
+  return mergeDemoMarkets(markets, getDemoMarketsByLeague(leagueChainIdHex))
 }
 
 export async function listMarketsByAgent(agentId: number) {
   await connectMongo()
-  return MarketModel.find({ agent_id: agentId }).lean().exec()
+  const markets = await MarketModel.find({ agent_id: agentId }).lean().exec()
+  return mergeDemoMarkets(markets, getDemoMarketsByAgent(agentId))
 }
 
 export async function listOpenMarkets(limit = 30) {
@@ -54,56 +58,66 @@ export async function listOpenMarkets(limit = 30) {
     }
   }
 
-  return markets
+  return mergeDemoMarkets(markets, DEMO_MARKETS).slice(0, limit) as typeof markets
 }
 
 export async function getMarket(contractAddress: string) {
   await connectMongo()
   const market = await MarketModel.findOne({ contract_address: contractAddress.toLowerCase() }).lean().exec()
-  if (!market) return null
+  const demoMarket = isDemoDataEnabled() ? getDemoMarket(contractAddress) : null
+  if (!market && !demoMarket) return null
 
+  if (!market && demoMarket) {
+    const [league, season] = await Promise.all([
+      getLeague(demoMarket.league_chain_id_hex),
+      getSeasonByChainId(demoMarket.season_chain_id_hex),
+    ])
+    return { ...demoMarket, agent: getDemoAgent(demoMarket.agent_id), league, season }
+  }
+
+  const marketDoc = market!
   const [agent, league, season] = await Promise.all([
-    AgentModel.findOne({ agent_id: market.agent_id }).lean().exec(),
-    getLeague(market.league_chain_id_hex),
-    getSeasonByChainId(market.season_chain_id_hex),
+    AgentModel.findOne({ agent_id: marketDoc.agent_id }).lean().exec(),
+    getLeague(marketDoc.league_chain_id_hex),
+    getSeasonByChainId(marketDoc.season_chain_id_hex),
   ])
 
   if (season) {
     // Keep market status consistent with season status even when chain reads fail.
-    if (season.status === "active" && market.status === "pending") {
+    if (season.status === "active" && marketDoc.status === "pending") {
       await MarketModel.updateOne(
-        { contract_address: market.contract_address, status: "pending" },
+        { contract_address: marketDoc.contract_address, status: "pending" },
         { status: "open" },
       )
-      market.status = "open"
-    } else if ((season.status === "ended" || season.status === "settled") && (market.status === "open" || market.status === "pending")) {
+      marketDoc.status = "open"
+    } else if ((season.status === "ended" || season.status === "settled") && (marketDoc.status === "open" || marketDoc.status === "pending")) {
       await MarketModel.updateOne(
-        { contract_address: market.contract_address, status: { $in: ["open", "pending"] } },
+        { contract_address: marketDoc.contract_address, status: { $in: ["open", "pending"] } },
         { status: "locked", locked_at: new Date() },
       )
-      market.status = "locked"
-    } else if ((season.status === "upcoming" || season.status === "registration") && market.status === "open") {
+      marketDoc.status = "locked"
+    } else if ((season.status === "upcoming" || season.status === "registration") && marketDoc.status === "open") {
       await MarketModel.updateOne(
-        { contract_address: market.contract_address, status: "open" },
+        { contract_address: marketDoc.contract_address, status: "open" },
         { status: "pending" },
       )
-      market.status = "pending"
+      marketDoc.status = "pending"
     }
   }
 
-  const allowChainStatus = market.status !== "pending"
+  const allowChainStatus = marketDoc.status !== "pending"
 
   try {
-    const snapshot = await readMarketContractSnapshot(market.contract_address)
+    const snapshot = await readMarketContractSnapshot(marketDoc.contract_address)
     // When a market is intentionally `pending` (season not active), don't let
     // chain-derived "open" override that application-level gate.
     if (!allowChainStatus) {
       const { status: _ignored, ...rest } = snapshot
-      return { ...market, ...rest, agent, league, season }
+      return { ...marketDoc, ...rest, agent, league, season }
     }
-    return { ...market, ...snapshot, agent, league, season }
+    return { ...marketDoc, ...snapshot, agent, league, season }
   } catch (error) {
-    return { ...market, agent, league, season, contract_read_error: (error as Error).message }
+    return { ...marketDoc, agent, league, season, contract_read_error: (error as Error).message }
   }
 }
 
@@ -140,4 +154,10 @@ export async function upsertMarket(input: {
     },
     { upsert: true, returnDocument: "after" },
   ).lean().exec()
+}
+
+function mergeDemoMarkets<T extends Array<{ contract_address: string }>>(markets: T, demos = DEMO_MARKETS) {
+  if (!isDemoDataEnabled()) return markets
+  const seen = new Set(markets.map((market) => market.contract_address.toLowerCase()))
+  return [...markets, ...demos.filter((market) => !seen.has(market.contract_address.toLowerCase()))] as unknown as T
 }

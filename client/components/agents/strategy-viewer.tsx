@@ -31,7 +31,7 @@ const STATUS_STYLE: Record<StrategyResponse["source"], string> = {
 const STATUS_LABEL: Record<StrategyResponse["source"], string> = {
   "0g-storage": "Verified from 0G Storage",
   "mongo-only": "0G download failed",
-  "local-hash-only": "Local hash only — not on 0G Storage",
+  "local-hash-only": "Local hash only, not on 0G Storage",
   unavailable: "Unavailable",
 }
 
@@ -97,11 +97,11 @@ export function StrategyViewer({ agentId }: { agentId: number }) {
       <div className="grid sm:grid-cols-2 gap-3 font-mono text-xs text-muted-foreground">
         <div>
           <p className="text-muted-foreground/60">Strategy root (DB)</p>
-          <p className="text-foreground break-all">{data.strategy_root ?? "—"}</p>
+          <p className="text-foreground break-all">{data.strategy_root ?? "Not available"}</p>
         </div>
         <div>
           <p className="text-muted-foreground/60">Strategy root (on-chain)</p>
-          <p className="text-foreground break-all">{data.on_chain_strategy_root ?? "—"}</p>
+          <p className="text-foreground break-all">{data.on_chain_strategy_root ?? "Not available"}</p>
         </div>
       </div>
 

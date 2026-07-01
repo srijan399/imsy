@@ -8,6 +8,8 @@ import { SectionLabel } from "@/components/marketing-section-label"
 import { MarketingHeader } from "@/components/marketing-header"
 import { AgentIconRender } from "@/components/agents/icon-picker"
 import { normalizeAgentStrategy, type AgentStrategy } from "@/lib/agents/strategy"
+import { DEMO_AGENTS } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 interface AgentRow {
   agent_id: number
@@ -25,10 +27,11 @@ export default function MyAgentsPage() {
   const { address } = useAccount()
   const [agents, setAgents] = useState<AgentRow[]>([])
   const [loading, setLoading] = useState(false)
+  const demoMode = isDemoDataEnabled()
 
   useEffect(() => {
     if (!address) {
-      setAgents([])
+      setAgents(demoMode ? DEMO_AGENTS as AgentRow[] : [])
       return
     }
     setLoading(true)
@@ -37,7 +40,7 @@ export default function MyAgentsPage() {
       .then((data) => setAgents(Array.isArray(data) ? data : []))
       .catch(() => setAgents([]))
       .finally(() => setLoading(false))
-  }, [address])
+  }, [address, demoMode])
 
   return (
     <main className="relative min-h-screen">
@@ -46,12 +49,16 @@ export default function MyAgentsPage() {
       <div className="relative z-10 pt-28 pb-24 pl-6 md:pl-28 pr-6 md:pr-12 w-full">
         <SectionLabel>My agents</SectionLabel>
         <h1 className="mt-4 mb-12 font-[var(--font-bebas)] text-5xl md:text-7xl tracking-tight leading-none">Agents</h1>
-        {!address ? (
-          <div className="border border-border/40 p-12 text-center space-y-4">
-            <p className="font-mono text-xs text-muted-foreground">Connect your wallet to load your agents.</p>
+        {!address && (
+          <div className="mb-6 border border-accent/30 bg-accent/5 p-4 flex flex-wrap items-center justify-between gap-4">
+            <p className="font-mono text-xs text-muted-foreground">
+              {demoMode ? "Showing demo agents. Connect your wallet to load your real roster." : "Connect your wallet to load your agent roster."}
+            </p>
             <ConnectButton />
           </div>
-        ) : loading ? (
+        )}
+
+        {loading ? (
           <div className="flex items-center gap-3 p-16 font-mono text-xs text-muted-foreground">
             <span className="inline-block size-4 border border-accent/60 border-t-transparent rounded-full animate-spin" />
             Loading agents…

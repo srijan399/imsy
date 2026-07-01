@@ -3,6 +3,8 @@ import "server-only"
 import { connectMongo } from "@/lib/db/mongoose"
 import { CreatorEarningsModel } from "@/lib/db/models/CreatorEarnings"
 import { AgentModel } from "@/lib/db/models/Agent"
+import { DEMO_EARNINGS } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export async function listEarningsByWallet(wallet: string) {
   await connectMongo()
@@ -16,6 +18,7 @@ export async function listEarningsByWallet(wallet: string) {
   const agents = agentIds.length ? await AgentModel.find({ agent_id: { $in: agentIds } }).lean().exec() : []
   const map = new Map(agents.map((a) => [a.agent_id, a]))
 
+  if (earnings.length === 0 && isDemoDataEnabled()) return DEMO_EARNINGS
   return earnings.map((e) => ({ ...e, agent: map.get(e.agent_id) ?? null }))
 }
 

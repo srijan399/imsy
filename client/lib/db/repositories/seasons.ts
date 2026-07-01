@@ -5,8 +5,20 @@ import { SeasonModel } from "@/lib/db/models/Season"
 import { LeagueModel } from "@/lib/db/models/League"
 import { MarketModel } from "@/lib/db/models/Market"
 import { deriveSeasonStatusFromTimestamps } from "@/lib/db/status"
+import { DEMO_SEASONS, getDemoSeason } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export type SeasonStatus = "upcoming" | "registration" | "active" | "ended" | "settled"
+
+const STATUS_PRIORITY: Record<SeasonStatus, number> = {
+  active: 0,
+  registration: 1,
+  upcoming: 2,
+  ended: 3,
+  settled: 4,
+}
+
+const DEMO_SEASON_IDS = new Set(DEMO_SEASONS.map((season) => season.chain_id_hex.toLowerCase()))
 
 async function ensureSeasonStatusUpToDate<
   T extends {
@@ -30,13 +42,17 @@ export async function listSeasons() {
   for (const season of seasons) {
     out.push(await ensureSeasonStatusUpToDate(season))
   }
-  return out
+  const seen = new Set(out.map((season) => season.chain_id_hex.toLowerCase()))
+  const demos = isDemoDataEnabled()
+    ? DEMO_SEASONS.filter((season) => !seen.has(season.chain_id_hex.toLowerCase()))
+    : []
+  return sortSeasonsActiveFirst([...out, ...demos]) as typeof seasons
 }
 
 export async function getSeasonByChainId(chainIdHex: string) {
   await connectMongo()
   const season = await SeasonModel.findOne({ chain_id_hex: chainIdHex.toLowerCase() }).lean().exec()
-  if (!season) return null
+  if (!season) return (isDemoDataEnabled() ? getDemoSeason(chainIdHex) : null) as typeof season
   return ensureSeasonStatusUpToDate(season)
 }
 
@@ -111,6 +127,23 @@ export async function updateSeasonStatus(chainIdHex: string, status: SeasonStatu
   }
 
   return season
+}
+
+function sortSeasonsActiveFirst<T extends { chain_id_hex: string; status: string; season_start: Date | string; name?: string }>(seasons: T[]) {
+  return [...seasons].sort((a, b) => {
+    const statusDelta = (STATUS_PRIORITY[a.status as SeasonStatus] ?? 99) - (STATUS_PRIORITY[b.status as SeasonStatus] ?? 99)
+    if (statusDelta !== 0) return statusDelta
+
+    const demoDelta = isDemoDataEnabled()
+      ? Number(!DEMO_SEASON_IDS.has(a.chain_id_hex.toLowerCase())) - Number(!DEMO_SEASON_IDS.has(b.chain_id_hex.toLowerCase()))
+      : 0
+    if (demoDelta !== 0) return demoDelta
+
+    const startDelta = new Date(b.season_start).getTime() - new Date(a.season_start).getTime()
+    if (startDelta !== 0) return startDelta
+
+    return (a.name ?? "").localeCompare(b.name ?? "")
+  })
 }
 
 export async function updateSeasonBettingLockHours(chainIdHex: string, hours: number) {

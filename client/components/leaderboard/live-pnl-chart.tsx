@@ -43,7 +43,7 @@ const POLL_MS = 10_000
 
 function makeEndDot(icon: string, color: string, lastTs: number) {
   return function EndDot(props: any) {
-    if (!props?.payload || props.payload.ts !== lastTs) return null
+    if (!props?.payload || props.payload.ts !== lastTs) return <g />
     return (
       <g key={`end-dot-${props.index}`}>
         <circle cx={props.cx} cy={props.cy} r={13} fill="#000" stroke={color} strokeWidth={2} />

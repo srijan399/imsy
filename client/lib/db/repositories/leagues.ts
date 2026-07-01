@@ -5,6 +5,8 @@ import { LeagueModel, type LeagueDoc } from "@/lib/db/models/League"
 import { AgentModel } from "@/lib/db/models/Agent"
 import { getSeasonByChainId } from "@/lib/db/repositories/seasons"
 import { leagueStatusFromSeasonStatus } from "@/lib/db/status"
+import { DEMO_LEAGUES, getDemoAgentsByLeague, getDemoLeague } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 async function ensureLeagueStatusUpToDate<
   T extends { chain_id_hex: string; season_chain_id_hex: string; status: LeagueDoc["status"] },
@@ -22,7 +24,11 @@ export async function listLeagues() {
   const leagues = await LeagueModel.find().sort({ created_at: -1 }).lean().exec()
   const out: typeof leagues = []
   for (const league of leagues) out.push(await ensureLeagueStatusUpToDate(league))
-  return out
+  const seen = new Set(out.map((league) => league.chain_id_hex.toLowerCase()))
+  const demos = isDemoDataEnabled()
+    ? DEMO_LEAGUES.filter((league) => !seen.has(league.chain_id_hex.toLowerCase()))
+    : []
+  return [...out, ...demos] as unknown as typeof leagues
 }
 
 export async function listLeaguesBySeason(seasonChainIdHex: string) {
@@ -32,13 +38,20 @@ export async function listLeaguesBySeason(seasonChainIdHex: string) {
   const leagues = await LeagueModel.find({ season_chain_id_hex: seasonChainIdHex.toLowerCase() }).lean().exec()
   const out: typeof leagues = []
   for (const league of leagues) out.push(await ensureLeagueStatusUpToDate(league))
-  return out
+  const seen = new Set(out.map((league) => league.chain_id_hex.toLowerCase()))
+  const demos = isDemoDataEnabled()
+    ? DEMO_LEAGUES.filter((league) => (
+      league.season_chain_id_hex.toLowerCase() === seasonChainIdHex.toLowerCase() &&
+      !seen.has(league.chain_id_hex.toLowerCase())
+    ))
+    : []
+  return [...out, ...demos] as unknown as typeof leagues
 }
 
 export async function getLeague(chainIdHex: string) {
   await connectMongo()
   const league = await LeagueModel.findOne({ chain_id_hex: chainIdHex.toLowerCase() }).lean().exec()
-  if (!league) return null
+  if (!league) return (isDemoDataEnabled() ? getDemoLeague(chainIdHex) : null) as typeof league
   return ensureLeagueStatusUpToDate(league)
 }
 
@@ -78,11 +91,13 @@ export async function createLeague(input: {
 export async function getLeagueWithAgents(chainIdHex: string) {
   await connectMongo()
   const league0 = await LeagueModel.findOne({ chain_id_hex: chainIdHex.toLowerCase() }).lean().exec()
-  const league = league0 ? await ensureLeagueStatusUpToDate(league0) : null
+  const demoLeague = isDemoDataEnabled() ? getDemoLeague(chainIdHex) : null
+  const league = league0 ? await ensureLeagueStatusUpToDate(league0) : demoLeague
   if (!league) return { league: null, agents: [] }
   const agents = await AgentModel.find({ leagues: chainIdHex.toLowerCase() })
     .sort({ current_rank: 1 })
     .lean()
     .exec()
+  if (agents.length === 0 && isDemoDataEnabled()) return { league, agents: getDemoAgentsByLeague(chainIdHex) as unknown as typeof agents }
   return { league, agents }
 }

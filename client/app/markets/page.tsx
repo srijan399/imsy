@@ -6,6 +6,8 @@ import { SectionLabel } from "@/components/marketing-section-label"
 import { listOpenMarkets } from "@/lib/db/repositories/markets"
 import { AgentModel } from "@/lib/db/models/Agent"
 import { connectMongo } from "@/lib/db/mongoose"
+import { getDemoAgent } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export const metadata: Metadata = {
   title: "Markets — IMSY.",
@@ -18,7 +20,8 @@ async function getMarketsWithAgents() {
   const ids = Array.from(new Set(markets.map((m) => m.agent_id)))
   const agents = ids.length ? await AgentModel.find({ agent_id: { $in: ids } }).lean().exec() : []
   const map = new Map(agents.map((a) => [a.agent_id, a.name]))
-  return markets.map((m) => ({ ...m, agentName: map.get(m.agent_id) ?? "Unknown" }))
+  const demoMode = isDemoDataEnabled()
+  return markets.map((m) => ({ ...m, agentName: map.get(m.agent_id) ?? (demoMode ? getDemoAgent(m.agent_id)?.name : undefined) ?? "Unknown" }))
 }
 
 export default async function MarketsPage() {

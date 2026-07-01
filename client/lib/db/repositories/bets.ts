@@ -6,6 +6,8 @@ import { MarketModel } from "@/lib/db/models/Market"
 import { SeasonModel } from "@/lib/db/models/Season"
 import { ensureUser } from "@/lib/db/repositories/agents"
 import { verifyBetTransaction } from "@/lib/web3/server"
+import { DEMO_BETS } from "@/lib/demo-data"
+import { isDemoDataEnabled } from "@/lib/demo-mode"
 
 export async function placeBet(input: {
   wallet_address: string
@@ -84,5 +86,6 @@ export async function listBetsByWallet(wallet: string) {
     ? await MarketModel.find({ contract_address: { $in: contracts } }).lean().exec()
     : []
   const marketMap = new Map(markets.map((m) => [m.contract_address, m]))
+  if (bets.length === 0 && isDemoDataEnabled()) return DEMO_BETS
   return bets.map((bet) => ({ ...bet, market: marketMap.get(bet.market_contract) ?? null }))
 }
